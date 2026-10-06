@@ -89,6 +89,7 @@ import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import LinuxPttSetupInfo from "./ui/LinuxPttSetupInfo";
 import { Toggle } from "./ui/toggle";
+import WatcherSettings from "../watcher/WatcherSettings";
 import DeveloperSection from "./DeveloperSection";
 import ChatAgentSettings from "./settings/ChatAgentSettings";
 import DictationAgentSettings from "./settings/DictationAgentSettings";
@@ -4159,6 +4160,8 @@ EOF`,
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
+            {/* Watcher fork */}
+            <WatcherSettings />
           </div>
         );
 

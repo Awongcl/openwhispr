@@ -2172,6 +2172,13 @@ declare global {
       saveGroqKey: (key: string) => Promise<void>;
       getOpenrouterKey: () => Promise<string | null>;
       saveOpenrouterKey: (key: string) => Promise<void>;
+      // Watcher fork
+      getCerebrasKey: () => Promise<string | null>;
+      saveCerebrasKey: (key: string) => Promise<void>;
+      watcherGetConfig: () => Promise<import("../watcher/types").WatcherStatus>;
+      watcherSetConfig: (
+        patch: Partial<import("../watcher/types").WatcherConfig>
+      ) => Promise<import("../watcher/types").WatcherStatus>;
 
       // xAI API key management
       getXaiKey?: () => Promise<string | null>;

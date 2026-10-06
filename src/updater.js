@@ -2,7 +2,11 @@ const { autoUpdater } = require("electron-updater");
 
 // electron-updater can only replace an AppImage on Linux; deb, rpm and tar.gz
 // installs are updated by the package manager instead.
-const isUpdaterSupported = process.platform !== "linux" || Boolean(process.env.APPIMAGE);
+// Watcher fork: never self-update — upstream releases would replace the fork.
+const WATCHER_FORK_UPDATES_DISABLED = true;
+const isUpdaterSupported =
+  !WATCHER_FORK_UPDATES_DISABLED &&
+  (process.platform !== "linux" || Boolean(process.env.APPIMAGE));
 
 class UpdateManager {
   constructor() {
@@ -332,6 +336,7 @@ class UpdateManager {
   // Checks always run so the sidebar can offer a manual download when automatic
   // updates are off; a failed background check is logged and never surfaced.
   _autoCheckForUpdates(label) {
+    if (!isUpdaterSupported) return;
     console.log(`🔄 ${label} update check...`);
     autoUpdater.checkForUpdates().catch((err) => {
       console.error(`${label} update check failed:`, err);
