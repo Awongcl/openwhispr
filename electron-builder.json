@@ -134,6 +134,7 @@
         "windows-system-audio-helper*",
         "windows-text-monitor*",
         "windows-fast-paste*",
+        "watcher-input*",
         "all-MiniLM-L6-v2/**/*",
         "diarization-models/**/*",
         "whisper-vad/**/*",
