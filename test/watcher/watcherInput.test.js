@@ -51,9 +51,11 @@ test("protocol: IDLE, FG, BS", async () => {
   assert.deepEqual(calls, ["IDLE", "FG", "BS 5 A1"]);
 });
 
-test("IDLE -1 means no input seen; BS 0 sends nothing", async () => {
+test("IDLE -1 reports hook start time; BS 0 sends nothing", async () => {
   const { input, calls } = makeInput(() => "IDLE -1");
-  assert.equal(await input.lastUserInputAt(), null);
+  const before = Date.now();
+  const last = await input.lastUserInputAt();
+  assert.ok(last >= before && last <= Date.now());
   assert.equal(await input.backspace(0, "A1"), "OK");
   assert.deepEqual(calls, ["IDLE"]);
 });

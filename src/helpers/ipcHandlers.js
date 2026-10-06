@@ -3069,6 +3069,8 @@ class IPCHandlers {
         };
       }
       const pasted = pasteResult?.pasted !== false;
+      // Watcher fork: remember the insertion for rewrite/revert/discard.
+      if (pasted) this.onTextInserted?.({ pasted: textToPaste, target: winTarget });
       debugLogger.debug("[AutoLearn] Paste completed", {
         autoLearnEnabled: this._autoLearnEnabled,
         hasMonitor: !!this.textEditMonitor,

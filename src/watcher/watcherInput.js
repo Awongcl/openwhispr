@@ -62,6 +62,7 @@ class WatcherInput {
       : [];
     const proc = this.spawnImpl(this.binary, args, { windowsHide: true, stdio: "pipe" });
     this.proc = proc;
+    this.startedAt = Date.now();
     this.buffer = "";
     proc.stdout.setEncoding("utf8");
     proc.stdout.on("data", (chunk) => {
@@ -121,11 +122,12 @@ class WatcherInput {
     if (this.isAvailable()) this._ensureStarted();
   }
 
-  // Wall-clock ms of the last real (non-injected, non-hotkey) input, or null.
+  // Wall-clock ms of the last real (non-injected, non-hotkey) input. With no input
+  // seen, the hook start time: anything inserted before a (re)start is unverifiable.
   async lastUserInputAt() {
     const line = await this._request("IDLE");
     const ms = Number(line.split(" ")[1]);
-    return Number.isFinite(ms) && ms >= 0 ? Date.now() - ms : null;
+    return Number.isFinite(ms) && ms >= 0 ? Date.now() - ms : this.startedAt;
   }
 
   async foregroundId() {

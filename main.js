@@ -1105,6 +1105,13 @@ async function startApp() {
   // failure before the whisper pre-warm below resolves its GPU backend.
   resetWhisperGpuFailureOnUpgrade(environmentManager);
   registerSidecars();
+  // Watcher fork: rewrite/revert/discard hotkeys + insertion tracking.
+  require("./src/watcher").initWatcher({
+    ipcHandlers,
+    clipboardManager,
+    sidecarRegistry,
+    logger: debugLogger,
+  });
   startAuthBridgeServer();
 
   cliBridge = new CliBridge(ipcHandlers);

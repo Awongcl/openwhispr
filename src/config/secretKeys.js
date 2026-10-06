@@ -50,6 +50,14 @@ const BYOK_API_KEYS = [
     save: "saveOpenrouterKey",
     storeKey: "openrouterApiKey",
   },
+  // Watcher fork: rewrite failover provider (spec O7).
+  {
+    base: "cerebras",
+    env: "CEREBRAS_API_KEY",
+    get: "getCerebrasKey",
+    save: "saveCerebrasKey",
+    storeKey: "cerebrasApiKey",
+  },
   {
     base: "tinfoil",
     env: "TINFOIL_API_KEY",
