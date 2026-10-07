@@ -66,9 +66,26 @@ function createProviderChain({
       });
       if (!response.ok) return { ok: false, reason: `http_${response.status}` };
       const data = await response.json();
-      const content = data?.choices?.[0]?.message?.content;
+      const choice = data?.choices?.[0];
+      const content = choice?.message?.content;
       const cleaned = typeof content === "string" ? stripReasoning(content) : "";
-      if (!cleaned) return { ok: false, reason: "empty" };
+      if (!cleaned) {
+        // Shape only — never the text itself.
+        logger?.warn?.(
+          "Rewrite provider returned no content",
+          {
+            provider: provider.id,
+            finishReason: choice?.finish_reason ?? null,
+            contentType: content === null ? "null" : typeof content,
+            contentLength: typeof content === "string" ? content.length : null,
+            hasReasoning: Boolean(choice?.message?.reasoning || choice?.message?.reasoning_content),
+            messageKeys: Object.keys(choice?.message || {}),
+            usage: data?.usage ?? null,
+          },
+          "watcher"
+        );
+        return { ok: false, reason: "empty" };
+      }
       return { ok: true, text: cleaned };
     } catch (error) {
       return { ok: false, reason: error?.name === "AbortError" ? "timeout" : "network" };

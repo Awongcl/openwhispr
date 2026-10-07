@@ -7,7 +7,7 @@
 const path = require("path");
 const { app, globalShortcut, ipcMain } = require("electron");
 
-const { createConfigStore, HOTKEY_FIELDS } = require("./config");
+const { createConfigStore, findDictationConflicts, HOTKEY_FIELDS } = require("./config");
 const { createInsertionTracker } = require("./insertionTracker");
 const { createProviderChain, DEFAULT_CHAIN } = require("./providerChain");
 const { createSwapController } = require("./swapController");
@@ -87,6 +87,7 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, logger })
       let ok = false;
       try {
         ok = globalShortcut.register(accelerator, () => {
+          logger?.info?.("Watcher hotkey", { field }, "watcher");
           actions[field]().catch((error) =>
             logger?.warn?.("Watcher action error", { field, error: error.message }, "watcher")
           );
@@ -105,11 +106,14 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, logger })
   }
 
   function status() {
+    const config = store.get();
     return {
-      config: store.get(),
+      config,
       platformSupported: isWindows,
       helperAvailable: input.isAvailable(),
       hotkeys: hotkeyStatus,
+      dictationKey: process.env.DICTATION_KEY || "",
+      dictationConflicts: findDictationConflicts(process.env.DICTATION_KEY, config),
     };
   }
 
@@ -122,7 +126,12 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, logger })
 
   ipcHandlers.onTextInserted = ({ pasted, target }) => {
     if (!isWindows || !store.get().enabled) return;
-    tracker.record({ pasted, target });
+    const entry = tracker.record({ pasted, target });
+    logger?.info?.(
+      "Insertion recorded",
+      { n: entry.n, target: target?.id ?? null, exe: target?.exeName ?? null },
+      "watcher"
+    );
   };
 
   sidecarRegistry?.register?.("watcher-input", () => {

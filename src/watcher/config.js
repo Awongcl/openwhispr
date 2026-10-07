@@ -56,6 +56,30 @@ function sanitize(input) {
   return out;
 }
 
+// A modifier-only push-to-talk key (e.g. "RightControl") also fires when that
+// modifier is part of a Watcher hotkey, starting a ghost dictation whose tiny
+// paste then becomes the "last insertion".
+const MODIFIER_FAMILY = {
+  control: "control", ctrl: "control", commandorcontrol: "control", leftcontrol: "control",
+  rightcontrol: "control", alt: "alt", option: "alt", leftalt: "alt", rightalt: "alt",
+  leftoption: "alt", rightoption: "alt", shift: "shift", leftshift: "shift", rightshift: "shift",
+  super: "super", meta: "super", command: "super", cmd: "super", win: "super",
+};
+
+function findDictationConflicts(dictationKey, config) {
+  const parts = String(dictationKey || "")
+    .split("+")
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean);
+  if (!parts.length || !parts.every((p) => MODIFIER_FAMILY[p])) return [];
+  const families = new Set(parts.map((p) => MODIFIER_FAMILY[p]));
+  return HOTKEY_FIELDS.filter((field) =>
+    String(config[field] || "")
+      .split("+")
+      .some((p) => families.has(MODIFIER_FAMILY[p.trim().toLowerCase()]))
+  );
+}
+
 function createConfigStore(filePath) {
   let cache = null;
   return {
@@ -86,4 +110,5 @@ module.exports = {
   DEFAULT_CONFIG,
   DEFAULT_SYSTEM_PROMPT,
   HOTKEY_FIELDS,
+  findDictationConflicts,
 };

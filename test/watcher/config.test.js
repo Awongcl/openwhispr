@@ -38,6 +38,15 @@ test("store persists merged config atomically", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("flags Watcher keys sharing a modifier-only dictation key", () => {
+  const { findDictationConflicts } = require("../../src/watcher/config");
+  const keys = { rewriteKey: "Control+1", revertKey: "Alt+2", discardKey: "Control+Alt+F7" };
+  assert.deepEqual(findDictationConflicts("RightControl", keys), ["rewriteKey", "discardKey"]);
+  assert.deepEqual(findDictationConflicts("Control+Super", keys), ["rewriteKey", "discardKey"]);
+  assert.deepEqual(findDictationConflicts("Control+Alt+F4", keys), []);
+  assert.deepEqual(findDictationConflicts("", keys), []);
+});
+
 test("buildProviders keeps order, drops disabled, applies model", () => {
   const c = sanitize({ providers: { cerebras: { enabled: false }, openrouter: { model: "x:free" } } });
   const list = buildProviders(c);

@@ -23,13 +23,29 @@ function createSwapController({
       input.foregroundId(),
       input.lastUserInputAt(),
     ]);
-    return checkSwap({
+    const result = checkSwap({
       entry,
       foregroundId,
       lastUserInputAt,
       now: now(),
       maxAgeMs: getSettings().maxAgeMs,
     });
+    if (!result.ok) {
+      logger?.info?.(
+        "Swap guard",
+        {
+          reason: result.reason,
+          target: entry?.target?.id ?? null,
+          foreground: foregroundId,
+          inputAfterPasteMs:
+            entry && lastUserInputAt != null
+              ? lastUserInputAt - Math.max(entry.insertedAt, entry.swappedAt || 0)
+              : null,
+        },
+        "watcher"
+      );
+    }
+    return result;
   }
 
   // Deletes what is on screen and pastes `version` ("raw"/"rewrite") or nothing.
@@ -68,6 +84,7 @@ function createSwapController({
   }
 
   function refuse(reason) {
+    logger?.info?.("Swap refused", { reason }, "watcher");
     if (reason === "nothing") toast("nothing");
     else toast("refused", { reason });
     return { ok: false, reason };

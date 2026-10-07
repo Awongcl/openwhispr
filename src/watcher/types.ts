@@ -21,4 +21,6 @@ export interface WatcherStatus {
   platformSupported: boolean;
   helperAvailable: boolean;
   hotkeys: Partial<Record<"rewriteKey" | "revertKey" | "discardKey", boolean>>;
+  dictationKey: string;
+  dictationConflicts: Array<"rewriteKey" | "revertKey" | "discardKey">;
 }

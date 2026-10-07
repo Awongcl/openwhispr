@@ -83,6 +83,13 @@ export default function WatcherSettings() {
           watcher-input.exe is missing: run "npm run compile:watcher-input".
         </p>
       )}
+      {config.enabled && status.dictationConflicts?.length > 0 && (
+        <p className="mb-2 text-xs text-destructive">
+          Your dictation hotkey ({status.dictationKey}) is a lone modifier that these keys also
+          use, so pressing them starts a short dictation and the swap acts on that instead. Use a
+          dictation hotkey like Ctrl+Alt+F4, or Watcher keys without that modifier.
+        </p>
+      )}
       <SettingsPanel>
         <Row label="Enabled">
           <Toggle checked={config.enabled} onChange={(enabled) => save({ enabled })} />
