@@ -13,11 +13,13 @@ const DEFAULT_SYSTEM_PROMPT = [
   "Output only the rewritten prompt.",
 ].join("\n");
 
+// Ctrl+Alt+F8/F11/F12 are commonly owned by GPU/vendor utilities; talk = Ctrl+Alt+F4
+// (OpenWhispr dictation hotkey, push mode).
 const DEFAULT_CONFIG = {
   enabled: true,
-  rewriteKey: "Control+Alt+F10",
-  revertKey: "Control+Alt+F11",
-  discardKey: "Control+Alt+F12",
+  rewriteKey: "Control+Alt+F5",
+  revertKey: "Control+Alt+F6",
+  discardKey: "Control+Alt+F7",
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   maxAgeMs: 5 * 60 * 1000,
   timeoutMs: 5000,

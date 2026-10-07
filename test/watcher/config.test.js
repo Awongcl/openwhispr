@@ -30,11 +30,11 @@ test("store persists merged config atomically", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "watcher-cfg-"));
   const file = path.join(dir, "watcher-config.json");
   const store = createConfigStore(file);
-  assert.equal(store.get().rewriteKey, "Control+Alt+F10");
+  assert.equal(store.get().rewriteKey, "Control+Alt+F5");
   store.set({ revertKey: "" });
   const reread = createConfigStore(file).get();
   assert.equal(reread.revertKey, "");
-  assert.equal(reread.rewriteKey, "Control+Alt+F10");
+  assert.equal(reread.rewriteKey, "Control+Alt+F5");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
