@@ -13,14 +13,16 @@ const DEFAULT_SYSTEM_PROMPT = [
   "Output only the rewritten prompt.",
 ].join("\n");
 
-// Ctrl+Alt+F8/F11/F12 are commonly owned by GPU/vendor utilities; talk = Ctrl+Alt+F4
-// (OpenWhispr dictation hotkey, push mode).
+// Optional keyboard fallback for the Watcher wheel. Alt+Shift+F-keys: unbound in
+// Windows and common apps, and no Ctrl, so a modifier-only dictation key such as
+// RightControl never fires with them (ghost dictations, R22). Ctrl+digit switches tabs;
+// Ctrl+Alt+F8/F11/F12 belong to GPU/vendor utilities.
 const DEFAULT_CONFIG = {
   enabled: true,
   linkEnabled: true, // BLE link to paired Watchers (O14)
-  rewriteKey: "Control+Alt+F5",
-  revertKey: "Control+Alt+F6",
-  discardKey: "Control+Alt+F7",
+  rewriteKey: "Alt+Shift+F5",
+  revertKey: "Alt+Shift+F6",
+  discardKey: "Alt+Shift+F7",
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   maxAgeMs: 5 * 60 * 1000,
   timeoutMs: 5000,

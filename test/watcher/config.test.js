@@ -30,11 +30,11 @@ test("store persists merged config atomically", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "watcher-cfg-"));
   const file = path.join(dir, "watcher-config.json");
   const store = createConfigStore(file);
-  assert.equal(store.get().rewriteKey, "Control+Alt+F5");
+  assert.equal(store.get().rewriteKey, "Alt+Shift+F5");
   store.set({ revertKey: "" });
   const reread = createConfigStore(file).get();
   assert.equal(reread.revertKey, "");
-  assert.equal(reread.rewriteKey, "Control+Alt+F5");
+  assert.equal(reread.rewriteKey, "Alt+Shift+F5");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -44,13 +44,20 @@ test("flags Watcher keys sharing a modifier-only dictation key", () => {
   assert.deepEqual(findDictationConflicts("RightControl", keys), ["rewriteKey", "discardKey"]);
   assert.deepEqual(findDictationConflicts("Control+Super", keys), ["rewriteKey", "discardKey"]);
   assert.deepEqual(findDictationConflicts("Control+Alt+F4", keys), []);
+  // Defaults never share a modifier with a lone-Ctrl dictation key.
+  assert.deepEqual(findDictationConflicts("RightControl", DEFAULT_CONFIG), []);
   assert.deepEqual(findDictationConflicts("", keys), []);
 });
 
 test("buildProviders keeps order, drops disabled, applies model", () => {
-  const c = sanitize({ providers: { cerebras: { enabled: false }, openrouter: { model: "x:free" } } });
+  const c = sanitize({
+    providers: { cerebras: { enabled: false }, openrouter: { model: "x:free" } },
+  });
   const list = buildProviders(c);
-  assert.deepEqual(list.map((p) => p.id), ["groq", "openrouter"]);
+  assert.deepEqual(
+    list.map((p) => p.id),
+    ["groq", "openrouter"]
+  );
   assert.equal(list[1].model, "x:free");
   assert.equal(list[0].keyEnv, "GROQ_API_KEY");
 });

@@ -106,7 +106,8 @@ export default function WatcherSettings() {
         <p className="mb-2 text-xs text-destructive">
           Your dictation hotkey ({status.dictationKey}) is a lone modifier that these keys also use,
           so pressing them starts a short dictation and the swap acts on that instead. Use a
-          dictation hotkey like Ctrl+Alt+F4, or Watcher keys without that modifier.
+          dictation hotkey like Ctrl+Alt+F4, or Watcher keys without that modifier (default
+          Alt+Shift+F5/F6/F7).
         </p>
       )}
       <SettingsPanel>
