@@ -72,3 +72,23 @@ test("ignore list is passed as hex VKs", async () => {
   await input.lastUserInputAt();
   assert.deepEqual(spawned.args, ["--ignore", "0x11,0x12,0x79,0x7a"]);
 });
+
+test("BS reports and logs requested vs sent Backspaces", async () => {
+  const replies = ["OK 12", "ERR focus 7", "ERR send 3", "OK"];
+  const { spawnImpl } = fakeSpawn(() => replies.shift());
+  const logs = [];
+  const logger = { info: (msg, data) => logs.push([msg, data]) };
+  const input = new WatcherInput({ binary: "x.exe", spawnImpl, logger });
+  input.isAvailable = () => true;
+  assert.equal(await input.backspace(12, "A1"), "OK");
+  assert.equal(await input.backspace(20, "A1"), "focus");
+  assert.equal(await input.backspace(9, "A1"), "send");
+  assert.equal(await input.backspace(4, "A1"), "OK"); // older helper: bare OK
+  const bs = logs.filter(([msg]) => msg === "Watcher backspace").map(([, d]) => d);
+  assert.deepEqual(bs, [
+    { requested: 12, sent: 12, result: "OK" },
+    { requested: 20, sent: 7, result: "focus" },
+    { requested: 9, sent: 3, result: "send" },
+    { requested: 4, sent: null, result: "OK" },
+  ]);
+});

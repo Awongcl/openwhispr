@@ -7,7 +7,7 @@
  * stdin commands (one per line)        stdout replies
  *   IDLE                                 IDLE <ms since last real input | -1>
  *   FG                                   FG <foreground hwnd, %p>
- *   BS <n> <hwnd hex>                    OK | ERR focus | ERR modifiers | ERR send | ERR args
+ *   BS <n> <hwnd hex>                    OK <sent> | ERR focus [sent] | ERR modifiers | ERR send <sent> | ERR args
  *   ENTER                                OK | ERR modifiers | ERR send   (Watcher "send", O14)
  *   MASK                                 OK | ERR send   (mask a held Alt/Win, see SendMask)
  *   QUIT                                 (exits)
@@ -89,7 +89,29 @@ static BOOL WaitModifiersReleased(DWORD timeoutMs) {
     }
 }
 
-static int SendBackspaces(int n) {
+/* Backspaces go out one at a time, evenly paced. Bursts are lost: Windows 11
+   Notepad (a XAML island) dropped keys when 8 arrived back to back, so a discard
+   stopped partway. Sleep(1) lasts a whole 15.6 ms timer tick, so pacing uses a
+   high-resolution waitable timer where Windows has one. */
+#define BS_GAP_US 2500
+#define BS_FOCUS_EVERY 16
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+
+static void WaitMicros(HANDLE timer, LONGLONG us) {
+    LARGE_INTEGER due;
+    due.QuadPart = -10 * us; /* relative, 100 ns units */
+    if (timer && SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE)) {
+        WaitForSingleObject(timer, INFINITE);
+    } else {
+        Sleep(1);
+    }
+}
+
+/* Returns the number of Backspaces sent; stops early if the target loses focus
+   (*focusLost) or SendInput fails. */
+static int SendBackspaces(int n, unsigned long long target, BOOL *focusLost) {
     INPUT inputs[2];
     ZeroMemory(inputs, sizeof(inputs));
     inputs[0].type = INPUT_KEYBOARD;
@@ -97,12 +119,22 @@ static int SendBackspaces(int n) {
     inputs[1].type = INPUT_KEYBOARD;
     inputs[1].ki.wVk = VK_BACK;
     inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-    for (int i = 0; i < n; i++) {
-        if (SendInput(2, inputs, sizeof(INPUT)) != 2) return 0;
-        /* Brief yield every few keys so slow editors (rich text, IME) keep up. */
-        if ((i & 7) == 7) Sleep(1);
+    HANDLE timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+                                          TIMER_ALL_ACCESS);
+    if (!timer) timer = CreateWaitableTimerExW(NULL, NULL, 0, TIMER_ALL_ACCESS);
+    int sent = 0;
+    *focusLost = FALSE;
+    for (; sent < n; sent++) {
+        if (sent % BS_FOCUS_EVERY == 0 && sent > 0 &&
+            (unsigned long long)(ULONG_PTR)GetForegroundWindow() != target) {
+            *focusLost = TRUE;
+            break;
+        }
+        if (SendInput(2, inputs, sizeof(INPUT)) != 2) break;
+        WaitMicros(timer, BS_GAP_US);
     }
-    return 1;
+    if (timer) CloseHandle(timer);
+    return sent;
 }
 
 /* A swap hotkey with Alt (or Win) looks like a lone Alt tap to the target app,
@@ -167,7 +199,11 @@ static void HandleCommand(char *line) {
         } else if ((unsigned long long)(ULONG_PTR)GetForegroundWindow() != target) {
             Reply("ERR focus");
         } else {
-            Reply(SendBackspaces((int)n) ? "OK" : "ERR send");
+            BOOL focusLost = FALSE;
+            int sent = SendBackspaces((int)n, target, &focusLost);
+            if (sent == n) snprintf(buf, sizeof(buf), "OK %d", sent);
+            else snprintf(buf, sizeof(buf), "ERR %s %d", focusLost ? "focus" : "send", sent);
+            Reply(buf);
         }
     } else if (strcmp(line, "ENTER") == 0) {
         /* A held Shift/Ctrl would turn this into Shift+Enter (newline) or Ctrl+Enter. */

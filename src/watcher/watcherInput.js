@@ -136,11 +136,20 @@ class WatcherInput {
   }
 
   // Resolves "OK" or an error code ("focus", "modifiers", "send", "args").
+  // The helper reports how many Backspaces it sent ("OK 42", "ERR focus 17").
   async backspace(n, hwnd) {
     if (n <= 0) return "OK";
     const id = String(hwnd).replace(/^0x/i, "");
     const line = await this._request(`BS ${n} ${id}`);
-    return line === "OK" ? "OK" : line.replace(/^ERR\s*/, "");
+    const [status, code, count] = line.split(" ");
+    const ok = status === "OK";
+    const sent = Number(ok ? code : count);
+    this.logger?.info?.(
+      "Watcher backspace",
+      { requested: n, sent: Number.isFinite(sent) ? sent : null, result: ok ? "OK" : code },
+      "watcher"
+    );
+    return ok ? "OK" : code || "error";
   }
 
   // Watcher "send" (O14): Enter to the foreground window. "OK" or an error code.
