@@ -2179,6 +2179,9 @@ declare global {
       watcherSetConfig: (
         patch: Partial<import("../watcher/types").WatcherConfig>
       ) => Promise<import("../watcher/types").WatcherStatus>;
+      onWatcherTalkAudio?: (
+        callback: (payload: import("../watcher/types").WatcherTalkAudio) => void
+      ) => () => void;
 
       // xAI API key management
       getXaiKey?: () => Promise<string | null>;

@@ -61,3 +61,9 @@ test("buildProviders keeps order, drops disabled, applies model", () => {
   assert.equal(list[1].model, "x:free");
   assert.equal(list[0].keyEnv, "GROQ_API_KEY");
 });
+
+test("audioSource defaults to the Watcher and only accepts known sources", () => {
+  assert.equal(sanitize({}).audioSource, "watcher");
+  assert.equal(sanitize({ audioSource: "pc-mic" }).audioSource, "pc-mic");
+  assert.equal(sanitize({ audioSource: "usb" }).audioSource, "watcher");
+});

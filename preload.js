@@ -96,6 +96,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Watcher fork
   watcherGetConfig: () => ipcRenderer.invoke("watcher-get-config"),
   watcherSetConfig: (patch) => ipcRenderer.invoke("watcher-set-config", patch),
+  onWatcherTalkAudio: registerListener(
+    "watcher-talk-audio",
+    (callback) => (_event, payload) => callback(payload)
+  ),
   captureSelectedText: (options) => ipcRenderer.invoke("capture-selected-text", options),
   replaceSelectedText: (sessionId, text, options) =>
     ipcRenderer.invoke("replace-selected-text", sessionId, text, options),

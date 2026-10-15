@@ -162,6 +162,12 @@ export default function WatcherSettings() {
                 onChange={(linkEnabled) => save({ linkEnabled })}
               />
             </Row>
+            <Row label="Use the Watcher's microphone (off: PC microphone)">
+              <Toggle
+                checked={config.audioSource === "watcher"}
+                onChange={(on) => save({ audioSource: on ? "watcher" : "pc-mic" })}
+              />
+            </Row>
             {config.enabled && config.linkEnabled && link?.available && (
               <>
                 {link.devices.length === 0 && (

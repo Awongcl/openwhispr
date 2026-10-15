@@ -20,6 +20,7 @@ const DEFAULT_SYSTEM_PROMPT = [
 const DEFAULT_CONFIG = {
   enabled: true,
   linkEnabled: true, // BLE link to paired Watchers (O14)
+  audioSource: "watcher", // Watcher talk audio: "watcher" (its mic, O13) | "pc-mic"
   rewriteKey: "Alt+Shift+F5",
   revertKey: "Alt+Shift+F6",
   discardKey: "Alt+Shift+F7",
@@ -34,12 +35,14 @@ const DEFAULT_CONFIG = {
 };
 
 const HOTKEY_FIELDS = ["rewriteKey", "revertKey", "discardKey"];
+const AUDIO_SOURCES = ["watcher", "pc-mic"];
 
 function sanitize(input) {
   const src = input && typeof input === "object" ? input : {};
   const out = { ...DEFAULT_CONFIG, providers: {} };
   if (typeof src.enabled === "boolean") out.enabled = src.enabled;
   if (typeof src.linkEnabled === "boolean") out.linkEnabled = src.linkEnabled;
+  if (AUDIO_SOURCES.includes(src.audioSource)) out.audioSource = src.audioSource;
   for (const field of HOTKEY_FIELDS) {
     if (typeof src[field] === "string") out[field] = src[field].trim();
   }
@@ -129,5 +132,6 @@ module.exports = {
   DEFAULT_CONFIG,
   DEFAULT_SYSTEM_PROMPT,
   HOTKEY_FIELDS,
+  AUDIO_SOURCES,
   findDictationConflicts,
 };

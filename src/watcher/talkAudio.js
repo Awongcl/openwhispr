@@ -1,0 +1,149 @@
+// Watcher fork (spec O13): turns one talk's Opus frames from the Audio
+// characteristic into 16 kHz mono PCM, then a WAV for OpenWhispr's transcription.
+// Contract: firmware/docs/link-protocol.md (W12) in the watcher-ai repo.
+
+const SAMPLE_RATE = 16000;
+const FRAME_SAMPLES = 320; // 20 ms
+const FRAME_BYTES = FRAME_SAMPLES * 2;
+// A lost run longer than this is not a few dropped notifications but a bad
+// seq; filling it would add seconds of silence to the transcript.
+const MAX_GAP_FRAMES = 50;
+// The Watcher queues ~32 s; anything past this is a runaway session.
+const MAX_FRAMES = 60 * 50;
+
+// libopus (WASM, no native build). Decoder state is per talk.
+function createOpusDecoder() {
+  const OpusScript = require("opusscript");
+  const decoder = new OpusScript(SAMPLE_RATE, 1);
+  return {
+    decode: (packet) => decoder.decode(packet),
+    destroy: () => decoder.delete(),
+  };
+}
+
+// Frames missing from a session are filled with 20 ms of silence each (libopus
+// PLC here always conceals 120+ ms, so it would stretch the audio). Late or
+// repeated frames are dropped; seq is u16 and wraps.
+function createTalkAssembler({ createDecoder = createOpusDecoder, logger = null } = {}) {
+  let talk = null;
+
+  function close() {
+    if (!talk) return;
+    try {
+      talk.decoder?.destroy();
+    } catch {}
+    talk = null;
+  }
+
+  function appendSilence(frames) {
+    talk.chunks.push(Buffer.alloc(frames * FRAME_BYTES));
+    talk.frames += frames;
+  }
+
+  return {
+    get session() {
+      return talk ? talk.session : null;
+    },
+
+    start(session) {
+      close();
+      talk = {
+        session,
+        decoder: null,
+        chunks: [],
+        frames: 0, // 20 ms frames in `chunks`, including fill
+        nextSeq: 0,
+        received: 0,
+        lost: 0,
+        late: 0,
+        badFrames: 0,
+      };
+    },
+
+    push({ session, seq, frame }) {
+      if (!talk || session !== talk.session) return false;
+      const ahead = (seq - talk.nextSeq) & 0xffff;
+      if (ahead >= 0x8000) {
+        talk.late++;
+        return false;
+      }
+      if (talk.frames >= MAX_FRAMES) return false;
+      if (ahead > 0) {
+        const fill = Math.min(ahead, MAX_GAP_FRAMES, MAX_FRAMES - talk.frames);
+        if (fill > 0) appendSilence(fill);
+        talk.lost += ahead;
+        if (talk.frames >= MAX_FRAMES) return false;
+      }
+      talk.nextSeq = (seq + 1) & 0xffff;
+      talk.received++;
+      let pcm = null;
+      try {
+        if (!talk.decoder) talk.decoder = createDecoder();
+        pcm = talk.decoder.decode(frame);
+      } catch {
+        pcm = null;
+      }
+      if (!pcm || pcm.length === 0) {
+        talk.badFrames++;
+        appendSilence(1);
+        return true;
+      }
+      talk.chunks.push(Buffer.from(pcm.buffer, pcm.byteOffset, pcm.length));
+      talk.frames += Math.max(1, Math.round(pcm.length / FRAME_BYTES));
+      return true;
+    },
+
+    // talk_end: `expected` is the Watcher's frame count. Returns null for a
+    // session that is not the active one.
+    finish(session, expected) {
+      if (!talk || session !== talk.session) return null;
+      const missingTail = Math.max(0, (expected ?? 0) - talk.received - talk.lost);
+      const pcm = Buffer.concat(talk.chunks);
+      const stats = {
+        session,
+        expected: expected ?? null,
+        received: talk.received,
+        lost: talk.lost + missingTail,
+        late: talk.late,
+        badFrames: talk.badFrames,
+        durationMs: Math.round((pcm.length / 2 / SAMPLE_RATE) * 1000),
+      };
+      close();
+      if (stats.lost || stats.badFrames) logger?.info?.("Watcher audio gaps", stats, "watcher");
+      return { pcm, stats };
+    },
+
+    cancel(session) {
+      if (talk && (session == null || session === talk.session)) close();
+    },
+  };
+}
+
+// 16-bit PCM mono -> RIFF/WAVE.
+function encodeWav(pcm, sampleRate = SAMPLE_RATE) {
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii");
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(1, 22); // mono
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36, "ascii");
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+module.exports = {
+  createTalkAssembler,
+  createOpusDecoder,
+  encodeWav,
+  SAMPLE_RATE,
+  FRAME_SAMPLES,
+  MAX_GAP_FRAMES,
+  MAX_FRAMES,
+};

@@ -8,6 +8,7 @@ export interface WatcherProviderConfig {
 export interface WatcherConfig {
   enabled: boolean;
   linkEnabled: boolean;
+  audioSource: "watcher" | "pc-mic";
   rewriteKey: string;
   revertKey: string;
   discardKey: string;
@@ -42,4 +43,11 @@ export interface WatcherStatus {
   dictationKey: string;
   dictationConflicts: Array<"rewriteKey" | "revertKey" | "discardKey">;
   link: { available: boolean; running: boolean; devices: WatcherLinkDevice[] };
+}
+
+// Main -> renderer: one Watcher talk's decoded audio (O13).
+export interface WatcherTalkAudio {
+  session: number;
+  wav: Uint8Array; // 16 kHz mono 16-bit WAV
+  durationSeconds: number;
 }

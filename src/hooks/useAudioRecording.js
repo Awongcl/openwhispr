@@ -25,6 +25,7 @@ import { waitForVisualFrames } from "../utils/visualFrame";
 import { resolveLifecycleInputKind } from "../helpers/dictationRouting";
 import { createAssistantResponseDelivery } from "../helpers/assistantResponseDelivery";
 import { recordCleanupFailure } from "../stores/cleanupFailureStore";
+import { transcribeWatcherAudio } from "../watcher/externalTalk";
 
 // Maps a failed selection-replacement code to its `selectionEditing.*` toast
 // detail key; unlisted codes fall back to the generic "unavailable" message.
@@ -1028,6 +1029,11 @@ export const useAudioRecording = (toast, options = {}) => {
       onToggle?.();
     });
 
+    // Watcher fork (O13): a Watcher talk's audio, transcribed and pasted like a dictation.
+    const disposeWatcherTalkAudio = window.electronAPI.onWatcherTalkAudio?.((payload) => {
+      void transcribeWatcherAudio(audioManagerRef.current, payload);
+    });
+
     const disposeForceStopped = window.electronAPI.onDictationForceStopped?.((payload) => {
       // Listed rather than negated: a future renderer-initiated stop would not
       // leave the keys down, and must not be swept in here.
@@ -1048,6 +1054,7 @@ export const useAudioRecording = (toast, options = {}) => {
       disposeCancelPreparation?.();
       disposeStop?.();
       disposeForceStopped?.();
+      disposeWatcherTalkAudio?.();
       if (audioManagerRef.current) {
         audioManagerRef.current.cleanup();
       }

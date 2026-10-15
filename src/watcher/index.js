@@ -2,7 +2,8 @@
 //   main.js       initWatcher(...) after environment init (gets windowManager for
 //                 Watcher talk -> dictation and the dictation lifecycle)
 //   ipcHandlers   paste-text calls onTextInserted({ pasted, target })
-//   preload.js    watcherGetConfig / watcherSetConfig
+//   preload.js    watcherGetConfig / watcherSetConfig, onWatcherTalkAudio
+//   useAudioRecording  onWatcherTalkAudio -> transcribeWatcherAudio (externalTalk.js)
 // Windows only for now; other platforms get a no-op.
 
 const path = require("path");
@@ -14,7 +15,11 @@ const { createLinkBridge } = require("./linkBridge");
 const { encodeState } = require("./linkProtocol");
 const { createProviderChain, DEFAULT_CHAIN } = require("./providerChain");
 const { createSwapController } = require("./swapController");
-const { createPcMicTalkSource } = require("./talkSource");
+const {
+  createPcMicTalkSource,
+  createSelectableTalkSource,
+  createWatcherTalkSource,
+} = require("./talkSource");
 const { createToast } = require("./toast");
 const { WatcherInput } = require("./watcherInput");
 const { WatcherLink } = require("./watcherLink");
@@ -75,7 +80,13 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, windowMan
   const link = new WatcherLink({ logger });
   const bridge = createLinkBridge({
     controller,
-    talk: createPcMicTalkSource({ windowManager, logger }),
+    talk: createSelectableTalkSource({
+      sources: {
+        watcher: createWatcherTalkSource({ windowManager, logger }),
+        "pc-mic": createPcMicTalkSource({ windowManager, logger }),
+      },
+      getAudioSource: () => store.get().audioSource,
+    }),
     sendEnter: () => input.enter(),
     tracker,
     sendState: (state, address) => link.write(address || "*", encodeState(state)),
