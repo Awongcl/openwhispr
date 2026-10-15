@@ -139,6 +139,8 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, windowMan
       try {
         ok = globalShortcut.register(accelerator, () => {
           logger?.info?.("Watcher hotkey", { field }, "watcher");
+          // Queued ahead of the swap's own helper requests, so it goes out first.
+          input.mask().catch(() => {});
           actions[field]().catch((error) =>
             logger?.warn?.("Watcher action error", { field, error: error.message }, "watcher")
           );

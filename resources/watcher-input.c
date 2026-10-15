@@ -9,6 +9,7 @@
  *   FG                                   FG <foreground hwnd, %p>
  *   BS <n> <hwnd hex>                    OK | ERR focus | ERR modifiers | ERR send | ERR args
  *   ENTER                                OK | ERR modifiers | ERR send   (Watcher "send", O14)
+ *   MASK                                 OK | ERR send   (mask a held Alt/Win, see SendMask)
  *   QUIT                                 (exits)
  *
  * Only key-down, mouse button and wheel events count as input; injected events
@@ -104,6 +105,27 @@ static int SendBackspaces(int n) {
     return 1;
 }
 
+/* A swap hotkey with Alt (or Win) looks like a lone Alt tap to the target app,
+   because RegisterHotKey eats the main key. The tap opens the menu bar (or
+   switches layout on Alt+Shift), which swallows the Backspaces and the Ctrl of
+   the Ctrl+V that follow. An unassigned key while the modifier is still down
+   masks it (AutoHotkey's MenuMaskKey). Sent only while Alt/Win is held. */
+#define VK_MASK 0xE8
+static int SendMask(void) {
+    if (!((GetAsyncKeyState(VK_MENU) | GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) &
+          0x8000)) {
+        return 1;
+    }
+    INPUT inputs[2];
+    ZeroMemory(inputs, sizeof(inputs));
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = VK_MASK;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = VK_MASK;
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    return SendInput(2, inputs, sizeof(INPUT)) == 2;
+}
+
 static int SendEnter(void) {
     INPUT inputs[2];
     ZeroMemory(inputs, sizeof(inputs));
@@ -151,6 +173,8 @@ static void HandleCommand(char *line) {
         /* A held Shift/Ctrl would turn this into Shift+Enter (newline) or Ctrl+Enter. */
         if (!WaitModifiersReleased(1500)) Reply("ERR modifiers");
         else Reply(SendEnter() ? "OK" : "ERR send");
+    } else if (strcmp(line, "MASK") == 0) {
+        Reply(SendMask() ? "OK" : "ERR send");
     } else if (strcmp(line, "QUIT") == 0) {
         PostThreadMessage(g_mainThreadId, WM_QUIT, 0, 0);
     } else {

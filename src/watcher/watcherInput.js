@@ -149,6 +149,13 @@ class WatcherInput {
     return line === "OK" ? "OK" : line.replace(/^ERR\s*/, "");
   }
 
+  // Call from a swap hotkey while its keys are still down: keeps the Alt/Win
+  // release from opening the target's menu bar (see SendMask in the helper).
+  async mask() {
+    const line = await this._request("MASK");
+    return line === "OK" ? "OK" : line.replace(/^ERR\s*/, "");
+  }
+
   stop() {
     const proc = this.proc;
     this.proc = null;

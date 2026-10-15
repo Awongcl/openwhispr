@@ -60,6 +60,12 @@ test("IDLE -1 reports hook start time; BS 0 sends nothing", async () => {
   assert.deepEqual(calls, ["IDLE"]);
 });
 
+test("MASK maps OK and errors", async () => {
+  const { input, calls } = makeInput((cmd) => (cmd === "MASK" ? "OK" : "ERR send"));
+  assert.equal(await input.mask(), "OK");
+  assert.deepEqual(calls, ["MASK"]);
+});
+
 test("ignore list is passed as hex VKs", async () => {
   const { input, spawned } = makeInput(() => "IDLE -1");
   input.setIgnoredHotkeys(["Control+Alt+F10", "Control+Alt+F11"]);
