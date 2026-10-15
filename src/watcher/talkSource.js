@@ -58,6 +58,9 @@ function createWatcherTalkSource({
   logger = null,
   assembler = createTalkAssembler({ logger }),
   deliver = (payload) => sendToDictationWindow(windowManager, payload),
+  // The window the user talks into, probed like a dictation start does: the
+  // paste restores it and the insertion records it (swapGuard needs its id).
+  captureTarget = () => windowManager?.selectionManager?.captureTarget?.({ force: true }),
   idleMs = TALK_IDLE_MS,
   setTimer = setTimeout,
   clearTimer = clearTimeout,
@@ -85,6 +88,11 @@ function createWatcherTalkSource({
     start({ session, latched }) {
       assembler.start(session);
       armIdle(session);
+      Promise.resolve()
+        .then(captureTarget)
+        .catch((error) =>
+          logger?.warn?.("Watcher target capture failed", { error: error?.message }, "watcher")
+        );
       logger?.info?.("Watcher talk start (Watcher mic)", { session, latched }, "watcher");
     },
     audio(packet) {

@@ -72,6 +72,37 @@ test("watcher source: talk_cancel and empty talks deliver nothing", () => {
   assert.equal(delivered.length, 0);
 });
 
+test("watcher source captures the target window at talk_start (paste + swap guard)", async () => {
+  const captures = [];
+  const windowManager = {
+    selectionManager: { captureTarget: async (opts) => captures.push(opts) },
+  };
+  const source = createWatcherTalkSource({
+    windowManager,
+    assembler: fakeAssembler(),
+    deliver: () => true,
+    setTimer: () => null,
+    clearTimer: () => {},
+  });
+  source.start({ session: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(captures, [{ force: true }]);
+
+  // A failing probe never breaks the talk.
+  const failing = createWatcherTalkSource({
+    assembler: fakeAssembler(),
+    captureTarget: () => {
+      throw new Error("no helper");
+    },
+    deliver: () => true,
+    setTimer: () => null,
+    clearTimer: () => {},
+  });
+  failing.start({ session: 2 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(failing.kind, "watcher");
+});
+
 test("watcher source drops a talk after 2 s without frames", () => {
   const { source, delivered, timers, fireIdle } = watcherSource();
   source.start({ session: 5 });
