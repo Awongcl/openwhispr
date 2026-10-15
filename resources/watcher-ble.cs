@@ -195,7 +195,7 @@ static class Program
                 if (dev == null) { Log("open failed: " + name); return; }
                 Address = FormatAddress(dev.BluetoothAddress);
                 Emit("PAIRED " + Address + " " + name);
-                dev.ConnectionStatusChanged += (s, e) => Kick();
+                dev.ConnectionStatusChanged += (s, e) => { Log("link " + Address + " " + dev.ConnectionStatus); Kick(); };
                 session = await GattSession.FromDeviceIdAsync(dev.BluetoothDeviceId);
                 session.SessionStatusChanged += (s, e) => Kick();
                 session.MaintainConnection = true; // Windows reconnects whenever the Watcher advertises
@@ -257,6 +257,23 @@ static class Program
             var info = await Char(INFO);
             if (evt == null || ctrl == null) { Log("characteristics missing " + Address); DisposeService(); return; }
 
+            // Read the encrypted Info characteristic first: it makes Windows encrypt the
+            // link. Subscribing before that is undone when NimBLE restores the bond's
+            // stored CCCD state on encryption, and the Watcher never becomes ready.
+            step = "info";
+            string infoHex = "-";
+            if (info != null)
+            {
+                var r = await info.ReadValueAsync(BluetoothCacheMode.Uncached);
+                if (r.Status != GattCommunicationStatus.Success)
+                {
+                    Log("info " + Address + ": " + r.Status);
+                    DisposeService();
+                    return;
+                }
+                infoHex = Hex(Bytes(r.Value));
+            }
+
             step = "subscribe";
             evt.ValueChanged += OnEvent;
             if (audio != null) audio.ValueChanged += OnAudio;
@@ -273,13 +290,7 @@ static class Program
                 await audio.WriteClientCharacteristicConfigurationDescriptorAsync(
                     GattClientCharacteristicConfigurationDescriptorValue.Notify);
 
-            step = "info";
-            string infoHex = "-";
-            if (info != null)
-            {
-                var r = await info.ReadValueAsync(BluetoothCacheMode.Uncached);
-                if (r.Status == GattCommunicationStatus.Success) infoHex = Hex(Bytes(r.Value));
-            }
+
             ready = true;
             Emit("CONN " + Address + " " + session.MaxPduSize + " " + infoHex);
         }
