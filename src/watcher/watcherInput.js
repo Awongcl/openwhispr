@@ -143,6 +143,12 @@ class WatcherInput {
     return line === "OK" ? "OK" : line.replace(/^ERR\s*/, "");
   }
 
+  // Watcher "send" (O14): Enter to the foreground window. "OK" or an error code.
+  async enter() {
+    const line = await this._request("ENTER");
+    return line === "OK" ? "OK" : line.replace(/^ERR\s*/, "");
+  }
+
   stop() {
     const proc = this.proc;
     this.proc = null;

@@ -8,6 +8,7 @@
  *   IDLE                                 IDLE <ms since last real input | -1>
  *   FG                                   FG <foreground hwnd, %p>
  *   BS <n> <hwnd hex>                    OK | ERR focus | ERR modifiers | ERR send | ERR args
+ *   ENTER                                OK | ERR modifiers | ERR send   (Watcher "send", O14)
  *   QUIT                                 (exits)
  *
  * Only key-down, mouse button and wheel events count as input; injected events
@@ -103,6 +104,17 @@ static int SendBackspaces(int n) {
     return 1;
 }
 
+static int SendEnter(void) {
+    INPUT inputs[2];
+    ZeroMemory(inputs, sizeof(inputs));
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = VK_RETURN;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = VK_RETURN;
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    return SendInput(2, inputs, sizeof(INPUT)) == 2;
+}
+
 static void HandleCommand(char *line) {
     char buf[64];
     line[strcspn(line, "\r\n")] = 0;
@@ -135,6 +147,10 @@ static void HandleCommand(char *line) {
         } else {
             Reply(SendBackspaces((int)n) ? "OK" : "ERR send");
         }
+    } else if (strcmp(line, "ENTER") == 0) {
+        /* A held Shift/Ctrl would turn this into Shift+Enter (newline) or Ctrl+Enter. */
+        if (!WaitModifiersReleased(1500)) Reply("ERR modifiers");
+        else Reply(SendEnter() ? "OK" : "ERR send");
     } else if (strcmp(line, "QUIT") == 0) {
         PostThreadMessage(g_mainThreadId, WM_QUIT, 0, 0);
     } else {

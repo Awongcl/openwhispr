@@ -17,6 +17,7 @@ const DEFAULT_SYSTEM_PROMPT = [
 // (OpenWhispr dictation hotkey, push mode).
 const DEFAULT_CONFIG = {
   enabled: true,
+  linkEnabled: true, // BLE link to paired Watchers (O14)
   rewriteKey: "Control+Alt+F5",
   revertKey: "Control+Alt+F6",
   discardKey: "Control+Alt+F7",
@@ -36,6 +37,7 @@ function sanitize(input) {
   const src = input && typeof input === "object" ? input : {};
   const out = { ...DEFAULT_CONFIG, providers: {} };
   if (typeof src.enabled === "boolean") out.enabled = src.enabled;
+  if (typeof src.linkEnabled === "boolean") out.linkEnabled = src.linkEnabled;
   for (const field of HOTKEY_FIELDS) {
     if (typeof src[field] === "string") out[field] = src[field].trim();
   }
@@ -60,10 +62,25 @@ function sanitize(input) {
 // modifier is part of a Watcher hotkey, starting a ghost dictation whose tiny
 // paste then becomes the "last insertion".
 const MODIFIER_FAMILY = {
-  control: "control", ctrl: "control", commandorcontrol: "control", leftcontrol: "control",
-  rightcontrol: "control", alt: "alt", option: "alt", leftalt: "alt", rightalt: "alt",
-  leftoption: "alt", rightoption: "alt", shift: "shift", leftshift: "shift", rightshift: "shift",
-  super: "super", meta: "super", command: "super", cmd: "super", win: "super",
+  control: "control",
+  ctrl: "control",
+  commandorcontrol: "control",
+  leftcontrol: "control",
+  rightcontrol: "control",
+  alt: "alt",
+  option: "alt",
+  leftalt: "alt",
+  rightalt: "alt",
+  leftoption: "alt",
+  rightoption: "alt",
+  shift: "shift",
+  leftshift: "shift",
+  rightshift: "shift",
+  super: "super",
+  meta: "super",
+  command: "super",
+  cmd: "super",
+  win: "super",
 };
 
 function findDictationConflicts(dictationKey, config) {

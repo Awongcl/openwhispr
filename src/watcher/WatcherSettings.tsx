@@ -6,12 +6,8 @@ import { HotkeyInput } from "../components/ui/HotkeyInput";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Toggle } from "../components/ui/toggle";
-import {
-  SectionHeader,
-  SettingsPanel,
-  SettingsPanelRow,
-} from "../components/ui/SettingsSection";
-import type { WatcherConfig, WatcherStatus } from "./types";
+import { SectionHeader, SettingsPanel, SettingsPanelRow } from "../components/ui/SettingsSection";
+import type { WatcherConfig, WatcherLinkDevice, WatcherStatus } from "./types";
 
 const HOTKEYS: Array<{ field: "rewriteKey" | "revertKey" | "discardKey"; label: string }> = [
   { field: "rewriteKey", label: "Rewrite last dictation" },
@@ -24,6 +20,16 @@ const PROVIDERS: Array<{ id: keyof WatcherConfig["providers"]; label: string }> 
   { id: "cerebras", label: "Cerebras" },
   { id: "openrouter", label: "OpenRouter (uses the OpenRouter key from AI Models)" },
 ];
+
+function deviceStatus(d: WatcherLinkDevice) {
+  if (!d.connected) return "Searching (press the wheel to wake it)";
+  const parts = ["Connected"];
+  if (d.battery?.percent != null) {
+    parts.push(`${d.battery.percent}%${d.battery.charging ? " charging" : ""}`);
+  }
+  if (d.firmware) parts.push(`fw ${d.firmware}`);
+  return parts.join(" · ");
+}
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -41,6 +47,7 @@ export default function WatcherSettings() {
   const [status, setStatus] = useState<WatcherStatus | null>(null);
   const [prompt, setPrompt] = useState("");
   const [cerebrasKey, setCerebrasKey] = useState("");
+  const [link, setLink] = useState<WatcherStatus["link"] | null>(null);
   const keyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -52,10 +59,22 @@ export default function WatcherSettings() {
     api.getCerebrasKey?.().then((k) => setCerebrasKey(k || ""));
   }, [api]);
 
+  // Link state changes on its own (sleep, wake, range); poll only that part so
+  // in-progress edits above are not overwritten.
+  useEffect(() => {
+    if (!api?.watcherGetConfig) return;
+    const refresh = () => api.watcherGetConfig().then((s) => setLink(s.link));
+    refresh();
+    const timer = setInterval(refresh, 2000);
+    return () => clearInterval(timer);
+  }, [api]);
+
   const save = useCallback(
     async (patch: Partial<WatcherConfig>) => {
       if (!api?.watcherSetConfig) return;
-      setStatus(await api.watcherSetConfig(patch));
+      const next = await api.watcherSetConfig(patch);
+      setStatus(next);
+      setLink(next.link);
     },
     [api]
   );
@@ -85,8 +104,8 @@ export default function WatcherSettings() {
       )}
       {config.enabled && status.dictationConflicts?.length > 0 && (
         <p className="mb-2 text-xs text-destructive">
-          Your dictation hotkey ({status.dictationKey}) is a lone modifier that these keys also
-          use, so pressing them starts a short dictation and the swap acts on that instead. Use a
+          Your dictation hotkey ({status.dictationKey}) is a lone modifier that these keys also use,
+          so pressing them starts a short dictation and the swap acts on that instead. Use a
           dictation hotkey like Ctrl+Alt+F4, or Watcher keys without that modifier.
         </p>
       )}
@@ -124,6 +143,48 @@ export default function WatcherSettings() {
         </Row>
       </SettingsPanel>
 
+      {status.platformSupported && (
+        <div className="mt-4">
+          <SectionHeader
+            title="Watcher link"
+            description="Bluetooth link to paired Watchers. Pair once in Windows Settings > Bluetooth > Add device and enter the passkey shown on the Watcher; the link then reconnects by itself."
+          />
+          {link && !link.available && (
+            <p className="mb-2 text-xs text-destructive">
+              watcher-ble.exe is missing: run "npm run compile:watcher-ble".
+            </p>
+          )}
+          <SettingsPanel>
+            <Row label="Connect to paired Watchers">
+              <Toggle
+                checked={config.linkEnabled}
+                onChange={(linkEnabled) => save({ linkEnabled })}
+              />
+            </Row>
+            {config.enabled && config.linkEnabled && link?.available && (
+              <>
+                {link.devices.length === 0 && (
+                  <Row label="No paired Watcher found">
+                    <span className="text-xs text-muted-foreground/80">
+                      {link.running ? "" : "Starting…"}
+                    </span>
+                  </Row>
+                )}
+                {link.devices.map((d) => (
+                  <Row key={d.address} label={d.name || d.address}>
+                    <span
+                      className={`text-xs ${d.connected ? "text-foreground" : "text-muted-foreground/80"}`}
+                    >
+                      {deviceStatus(d)}
+                    </span>
+                  </Row>
+                ))}
+              </>
+            )}
+          </SettingsPanel>
+        </div>
+      )}
+
       <div className="mt-4">
         <SectionHeader
           title="Rewrite providers"
@@ -138,7 +199,10 @@ export default function WatcherSettings() {
                   checked={config.providers[id].enabled}
                   onChange={(enabled) =>
                     save({
-                      providers: { ...config.providers, [id]: { ...config.providers[id], enabled } },
+                      providers: {
+                        ...config.providers,
+                        [id]: { ...config.providers[id], enabled },
+                      },
                     })
                   }
                 />

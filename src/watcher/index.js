@@ -1,18 +1,26 @@
 // Watcher fork entry point (main process). Upstream hooks:
-//   main.js       initWatcher(...) after environment init
+//   main.js       initWatcher(...) after environment init (gets windowManager for
+//                 Watcher talk -> dictation and the dictation lifecycle)
 //   ipcHandlers   paste-text calls onTextInserted({ pasted, target })
 //   preload.js    watcherGetConfig / watcherSetConfig
 // Windows only for now; other platforms get a no-op.
 
 const path = require("path");
-const { app, globalShortcut, ipcMain } = require("electron");
+const { app, globalShortcut, ipcMain, powerMonitor } = require("electron");
 
 const { createConfigStore, findDictationConflicts, HOTKEY_FIELDS } = require("./config");
 const { createInsertionTracker } = require("./insertionTracker");
+const { createLinkBridge } = require("./linkBridge");
+const { encodeState } = require("./linkProtocol");
 const { createProviderChain, DEFAULT_CHAIN } = require("./providerChain");
 const { createSwapController } = require("./swapController");
+const { createPcMicTalkSource } = require("./talkSource");
 const { createToast } = require("./toast");
 const { WatcherInput } = require("./watcherInput");
+const { WatcherLink } = require("./watcherLink");
+
+// After resume the Bluetooth stack needs a moment before WinRT sessions work.
+const RESUME_RESTART_MS = 3000;
 
 function buildProviders(config) {
   return DEFAULT_CHAIN.filter((p) => config.providers[p.id]?.enabled).map((p) => ({
@@ -21,7 +29,7 @@ function buildProviders(config) {
   }));
 }
 
-function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, logger }) {
+function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, windowManager, logger }) {
   const isWindows = process.platform === "win32";
   const store = createConfigStore(path.join(app.getPath("userData"), "watcher-config.json"));
   const tracker = createInsertionTracker();
@@ -64,10 +72,53 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, logger })
     },
   });
 
+  const link = new WatcherLink({ logger });
+  const bridge = createLinkBridge({
+    controller,
+    talk: createPcMicTalkSource({ windowManager, logger }),
+    sendEnter: () => input.enter(),
+    tracker,
+    sendState: (state, address) => link.write(address || "*", encodeState(state)),
+    toast: (kind, detail) => toast.show(kind, detail),
+    getSettings: () => store.get(),
+    logger,
+  });
+  link.on("event", (event, device) => {
+    Promise.resolve(bridge.handleEvent(event, device)).catch((error) =>
+      logger?.warn?.("Watcher event error", { name: event.name, error: error.message }, "watcher")
+    );
+  });
+  link.on("audio", (packet) => bridge.onAudio(packet));
+  link.on("connected", (device) => bridge.onConnected(device));
+
+  // Busy/error feedback for the Watcher follows OpenWhispr's dictation lifecycle.
+  if (windowManager?.setDictationLifecycleState) {
+    const setLifecycle = windowManager.setDictationLifecycleState.bind(windowManager);
+    windowManager.setDictationLifecycleState = (state, inputKind) => {
+      setLifecycle(state, inputKind);
+      bridge.onDictationLifecycle(windowManager._dictationLifecycleState);
+    };
+  }
+
+  function syncLink() {
+    const config = store.get();
+    if (isWindows && config.enabled && config.linkEnabled) {
+      if (!link.wanted) link.start();
+    } else if (link.wanted) {
+      link.stop();
+    }
+  }
+
+  let resumeTimer = null;
+  powerMonitor?.on?.("resume", () => {
+    clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(() => link.restart(), RESUME_RESTART_MS);
+  });
+
   const actions = {
-    rewriteKey: () => controller.rewrite(),
-    revertKey: () => controller.revert(),
-    discardKey: () => controller.discard(),
+    rewriteKey: () => bridge.rewrite(),
+    revertKey: () => bridge.revert(),
+    discardKey: () => bridge.discard(),
   };
 
   function registerHotkeys() {
@@ -114,6 +165,7 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, logger })
       hotkeys: hotkeyStatus,
       dictationKey: process.env.DICTATION_KEY || "",
       dictationConflicts: findDictationConflicts(process.env.DICTATION_KEY, config),
+      link: link.status(),
     };
   }
 
@@ -121,6 +173,7 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, logger })
   ipcMain.handle("watcher-set-config", (_event, patch) => {
     store.set(patch || {});
     registerHotkeys();
+    syncLink();
     return status();
   });
 
@@ -132,16 +185,24 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, logger })
       { n: entry.n, target: target?.id ?? null, exe: target?.exeName ?? null },
       "watcher"
     );
+    bridge.onInsertion();
   };
 
   sidecarRegistry?.register?.("watcher-input", () => {
     input.stop();
+    link.stop();
+    clearTimeout(resumeTimer);
     toast.destroy();
   });
 
   registerHotkeys();
-  logger?.info?.("Watcher fork initialized", { helper: input.isAvailable() }, "watcher");
-  return { controller, tracker, status };
+  syncLink();
+  logger?.info?.(
+    "Watcher fork initialized",
+    { helper: input.isAvailable(), link: link.isAvailable() },
+    "watcher"
+  );
+  return { controller, tracker, bridge, link, status };
 }
 
 module.exports = { initWatcher, buildProviders };

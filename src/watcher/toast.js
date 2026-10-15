@@ -13,6 +13,8 @@ const MESSAGES = {
   busy: "Busy…",
   unavailable: "Swap helper unavailable",
   refused: "Swap refused",
+  battery_low: "Watcher battery low",
+  battery_critical: "Watcher battery critical",
 };
 
 const REASONS = {
@@ -24,6 +26,7 @@ const REASONS = {
   focus: "window changed",
   paste_failed: "paste failed",
   error: "error",
+  send: "key send failed",
 };
 
 const STICKY = new Set(["rewriting", "busy"]);
@@ -86,11 +89,13 @@ function createToast({ durationMs = 1600 } = {}) {
   async function show(kind, detail) {
     try {
       await ensureWindow();
-      const isError = kind === "refused" || kind === "rewrite_failed" || kind === "unavailable";
+      const isError =
+        kind === "refused" ||
+        kind === "rewrite_failed" ||
+        kind === "unavailable" ||
+        kind === "battery_critical";
       const message = formatToast(kind, detail);
-      await win.webContents.executeJavaScript(
-        `show(${JSON.stringify(message)}, ${isError})`
-      );
+      await win.webContents.executeJavaScript(`show(${JSON.stringify(message)}, ${isError})`);
       position();
       if (!win.isVisible()) win.showInactive();
       clearTimeout(hideTimer);
