@@ -15,6 +15,7 @@ const MESSAGES = {
   refused: "Swap refused",
   battery_low: "Watcher battery low",
   battery_critical: "Watcher battery critical",
+  audio_undecodable: "Watcher audio could not be decoded",
 };
 
 const REASONS = {
@@ -93,7 +94,8 @@ function createToast({ durationMs = 1600 } = {}) {
         kind === "refused" ||
         kind === "rewrite_failed" ||
         kind === "unavailable" ||
-        kind === "battery_critical";
+        kind === "battery_critical" ||
+        kind === "audio_undecodable";
       const message = formatToast(kind, detail);
       await win.webContents.executeJavaScript(`show(${JSON.stringify(message)}, ${isError})`);
       position();

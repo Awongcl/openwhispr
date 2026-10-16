@@ -82,7 +82,11 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, windowMan
     controller,
     talk: createSelectableTalkSource({
       sources: {
-        watcher: createWatcherTalkSource({ windowManager, logger }),
+        watcher: createWatcherTalkSource({
+          windowManager,
+          logger,
+          toast: (kind, detail) => toast.show(kind, detail),
+        }),
         "pc-mic": createPcMicTalkSource({ windowManager, logger }),
       },
       getAudioSource: () => store.get().audioSource,

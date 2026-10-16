@@ -56,6 +56,7 @@ function sendToDictationWindow(windowManager, payload) {
 function createWatcherTalkSource({
   windowManager,
   logger = null,
+  toast = () => {},
   assembler = createTalkAssembler({ logger }),
   deliver = (payload) => sendToDictationWindow(windowManager, payload),
   // The window the user talks into, probed like a dictation start does: the
@@ -107,6 +108,17 @@ function createWatcherTalkSource({
       // Nothing heard: no transcription starts, so the bridge's talk-end
       // timeout reports the error on the Watcher.
       if (stats.received === 0) return;
+      // Every frame failed to decode: the WAV would be pure silence, which
+      // Whisper turns into hallucinated text. Same error path as no audio.
+      if (stats.undecodable) {
+        logger?.error?.(
+          "Watcher talk not transcribed: audio undecodable",
+          { session, decoderError: stats.decoderError, decodeError: stats.decodeError },
+          "watcher"
+        );
+        toast("audio_undecodable");
+        return;
+      }
       const delivered = deliver({
         session,
         wav: encodeWav(pcm),

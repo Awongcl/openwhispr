@@ -72,6 +72,32 @@ test("watcher source: talk_cancel and empty talks deliver nothing", () => {
   assert.equal(delivered.length, 0);
 });
 
+test("watcher source: an undecodable talk is not transcribed and raises an error", () => {
+  const delivered = [];
+  const toasts = [];
+  const errors = [];
+  const source = createWatcherTalkSource({
+    assembler: createTalkAssembler({
+      createDecoder: () => {
+        throw new Error("Cannot find module 'opusscript'");
+      },
+    }),
+    deliver: (payload) => delivered.push(payload),
+    toast: (kind) => toasts.push(kind),
+    logger: { info() {}, warn() {}, error: (msg, data) => errors.push({ msg, data }) },
+    setTimer: () => null,
+    clearTimer: () => {},
+  });
+  source.start({ session: 3 });
+  for (let seq = 0; seq < 10; seq++) source.audio({ session: 3, seq, frame: Buffer.from([1]) });
+  source.end({ session: 3, frames: 10 });
+  assert.equal(delivered.length, 0);
+  assert.deepEqual(toasts, ["audio_undecodable"]);
+  const skip = errors.find((e) => e.msg === "Watcher talk not transcribed: audio undecodable");
+  assert.ok(skip);
+  assert.match(skip.data.decoderError, /opusscript/);
+});
+
 test("watcher source captures the target window at talk_start (paste + swap guard)", async () => {
   const captures = [];
   const windowManager = {

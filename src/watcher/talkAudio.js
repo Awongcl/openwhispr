@@ -57,6 +57,8 @@ function createTalkAssembler({ createDecoder = createOpusDecoder, logger = null 
         lost: 0,
         late: 0,
         badFrames: 0,
+        decoderError: null, // createDecoder threw (first message)
+        decodeError: null, // first per-frame decode exception
       };
     },
 
@@ -77,11 +79,34 @@ function createTalkAssembler({ createDecoder = createOpusDecoder, logger = null 
       talk.nextSeq = (seq + 1) & 0xffff;
       talk.received++;
       let pcm = null;
-      try {
-        if (!talk.decoder) talk.decoder = createDecoder();
-        pcm = talk.decoder.decode(frame);
-      } catch {
-        pcm = null;
+      // A decoder that cannot be created (e.g. opusscript missing) fails every
+      // frame; say so once per talk instead of silently feeding Whisper silence.
+      if (!talk.decoder && !talk.decoderError) {
+        try {
+          talk.decoder = createDecoder();
+        } catch (error) {
+          talk.decoderError = error?.message || String(error);
+          logger?.error?.(
+            "Watcher Opus decoder could not be created",
+            { session, error: talk.decoderError },
+            "watcher"
+          );
+        }
+      }
+      if (talk.decoder) {
+        try {
+          pcm = talk.decoder.decode(frame);
+        } catch (error) {
+          pcm = null;
+          if (!talk.decodeError) {
+            talk.decodeError = error?.message || String(error);
+            logger?.warn?.(
+              "Watcher Opus frame decode failed",
+              { session, seq, error: talk.decodeError },
+              "watcher"
+            );
+          }
+        }
       }
       if (!pcm || pcm.length === 0) {
         talk.badFrames++;
@@ -107,9 +132,15 @@ function createTalkAssembler({ createDecoder = createOpusDecoder, logger = null 
         late: talk.late,
         badFrames: talk.badFrames,
         durationMs: Math.round((pcm.length / 2 / SAMPLE_RATE) * 1000),
+        decoderError: talk.decoderError,
+        decodeError: talk.decodeError,
+        // Every received frame failed: the PCM is pure fill, not speech.
+        undecodable: talk.received > 0 && talk.badFrames === talk.received,
       };
       close();
-      if (stats.lost || stats.badFrames) logger?.info?.("Watcher audio gaps", stats, "watcher");
+      if (stats.undecodable) logger?.error?.("Watcher audio undecodable", stats, "watcher");
+      else if (stats.lost || stats.badFrames)
+        logger?.info?.("Watcher audio gaps", stats, "watcher");
       return { pcm, stats };
     },
 
