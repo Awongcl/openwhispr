@@ -100,6 +100,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     "watcher-talk-audio",
     (callback) => (_event, payload) => callback(payload)
   ),
+  onWatcherTalkLive: registerListener(
+    "watcher-talk-live",
+    (callback) => (_event, payload) => callback(payload)
+  ),
   captureSelectedText: (options) => ipcRenderer.invoke("capture-selected-text", options),
   replaceSelectedText: (sessionId, text, options) =>
     ipcRenderer.invoke("replace-selected-text", sessionId, text, options),

@@ -51,3 +51,10 @@ export interface WatcherTalkAudio {
   wav: Uint8Array; // 16 kHz mono 16-bit WAV
   durationSeconds: number;
 }
+
+// Main -> renderer: a Watcher talk is live (pill listening state + waveform level).
+export interface WatcherTalkLive {
+  session: number;
+  active: boolean;
+  level?: number; // RMS 0..1 of the latest decoded frame; absent on the start/stop updates
+}

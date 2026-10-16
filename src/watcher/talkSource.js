@@ -15,8 +15,13 @@
 const { createTalkAssembler, encodeWav } = require("./talkAudio");
 
 const TALK_AUDIO_CHANNEL = "watcher-talk-audio";
+// Live talk state for the dictation pill: { session, active, level }. Without it the
+// pill only learns of a Watcher talk when the finished audio arrives at talk_end.
+const TALK_LIVE_CHANNEL = "watcher-talk-live";
 // Frames are continuous while talking (VBR, no DTX), so a silent link is a dead talk.
 const TALK_IDLE_MS = 2000;
+// One level update per this many frames (20 ms each): ~25 updates/s for the waveform.
+const LEVEL_EVERY_FRAMES = 2;
 
 function createPcMicTalkSource({ windowManager, logger = null }) {
   let active = null;
@@ -53,12 +58,22 @@ function sendToDictationWindow(windowManager, payload) {
   return true;
 }
 
+function sendLiveToDictationWindow(windowManager, payload) {
+  const win = windowManager?.mainWindow;
+  if (!win || win.isDestroyed?.()) return;
+  if (payload.active && payload.level === undefined) {
+    windowManager.showDictationPanel?.({ reposition: true });
+  }
+  win.webContents.send(TALK_LIVE_CHANNEL, payload);
+}
+
 function createWatcherTalkSource({
   windowManager,
   logger = null,
   toast = () => {},
   assembler = createTalkAssembler({ logger }),
   deliver = (payload) => sendToDictationWindow(windowManager, payload),
+  live = (payload) => sendLiveToDictationWindow(windowManager, payload),
   // The window the user talks into, probed like a dictation start does: the
   // paste restores it and the insertion records it (swapGuard needs its id).
   captureTarget = () => windowManager?.selectionManager?.captureTarget?.({ force: true }),
@@ -67,10 +82,33 @@ function createWatcherTalkSource({
   clearTimer = clearTimeout,
 }) {
   let idleTimer = null;
+  let liveSession = null;
+  let framesSinceLevel = 0;
 
   function stopIdle() {
     clearTimer(idleTimer);
     idleTimer = null;
+  }
+
+  // Never throws: the pill is cosmetic and must not break a talk.
+  function sendLive(payload) {
+    try {
+      live(payload);
+    } catch (error) {
+      logger?.warn?.("Watcher live state not sent", { error: error?.message }, "watcher");
+    }
+  }
+
+  function liveStart(session) {
+    liveSession = session;
+    framesSinceLevel = 0;
+    sendLive({ session, active: true });
+  }
+
+  function liveStop(session) {
+    if (liveSession !== session) return;
+    liveSession = null;
+    sendLive({ session, active: false });
   }
 
   // Spec O13: drop the session when no frame arrives for `idleMs`.
@@ -80,6 +118,7 @@ function createWatcherTalkSource({
       idleTimer = null;
       if (assembler.session !== session) return;
       assembler.cancel(session);
+      liveStop(session);
       logger?.warn?.("Watcher talk dropped: no audio", { session, idleMs }, "watcher");
     }, idleMs);
   }
@@ -89,6 +128,7 @@ function createWatcherTalkSource({
     start({ session, latched }) {
       assembler.start(session);
       armIdle(session);
+      liveStart(session);
       Promise.resolve()
         .then(captureTarget)
         .catch((error) =>
@@ -97,10 +137,16 @@ function createWatcherTalkSource({
       logger?.info?.("Watcher talk start (Watcher mic)", { session, latched }, "watcher");
     },
     audio(packet) {
-      if (assembler.push(packet)) armIdle(packet.session);
+      if (!assembler.push(packet)) return;
+      armIdle(packet.session);
+      if (liveSession === packet.session && ++framesSinceLevel >= LEVEL_EVERY_FRAMES) {
+        framesSinceLevel = 0;
+        sendLive({ session: packet.session, active: true, level: assembler.level });
+      }
     },
     end({ session, frames }) {
       const result = assembler.finish(session, frames);
+      liveStop(session); // before delivery: the pill goes from listening to processing
       if (!result) return;
       stopIdle();
       const { pcm, stats } = result;
@@ -127,6 +173,7 @@ function createWatcherTalkSource({
       if (!delivered) logger?.warn?.("Watcher audio not delivered", { session }, "watcher");
     },
     cancel({ session }) {
+      liveStop(session);
       if (assembler.session !== session) return;
       stopIdle();
       assembler.cancel(session);
@@ -169,7 +216,9 @@ function createSelectableTalkSource({ sources, getAudioSource }) {
 
 module.exports = {
   TALK_AUDIO_CHANNEL,
+  TALK_LIVE_CHANNEL,
   TALK_IDLE_MS,
+  LEVEL_EVERY_FRAMES,
   createPcMicTalkSource,
   createWatcherTalkSource,
   createSelectableTalkSource,

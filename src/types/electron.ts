@@ -2182,6 +2182,9 @@ declare global {
       onWatcherTalkAudio?: (
         callback: (payload: import("../watcher/types").WatcherTalkAudio) => void
       ) => () => void;
+      onWatcherTalkLive?: (
+        callback: (payload: import("../watcher/types").WatcherTalkLive) => void
+      ) => () => void;
 
       // xAI API key management
       getXaiKey?: () => Promise<string | null>;

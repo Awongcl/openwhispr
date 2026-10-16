@@ -64,3 +64,55 @@ test("drops Watcher audio while a dictation is recording or processing", async (
   );
   assert.equal(await transcribeWatcherAudio(null, payload()), "empty");
 });
+
+test("live talk: start, levels, stop drive the pill state", async () => {
+  const { applyWatcherTalkLive, watcherTalkLevel } = await load();
+  const state = { session: null, level: null, timer: null };
+  const talking = [];
+  const timers = [];
+  const opts = {
+    setTimer: (fn, ms) => {
+      const t = { fn, ms, cleared: false };
+      timers.push(t);
+      return t;
+    },
+    clearTimer: (t) => {
+      if (t) t.cleared = true;
+    },
+  };
+  assert.equal(watcherTalkLevel(state), null);
+  applyWatcherTalkLive(state, { session: 5, active: true }, (v) => talking.push(v), opts);
+  assert.deepEqual(talking, [true]);
+  assert.equal(watcherTalkLevel(state), 0);
+  applyWatcherTalkLive(
+    state,
+    { session: 5, active: true, level: 0.04 },
+    (v) => talking.push(v),
+    opts
+  );
+  assert.equal(watcherTalkLevel(state), 0.04);
+  assert.deepEqual(talking, [true]); // levels do not re-trigger the state
+  applyWatcherTalkLive(state, { session: 4, active: false }, (v) => talking.push(v), opts);
+  assert.deepEqual(talking, [true]); // stop of another session ignored
+  applyWatcherTalkLive(state, { session: 5, active: false }, (v) => talking.push(v), opts);
+  assert.deepEqual(talking, [true, false]);
+  assert.equal(watcherTalkLevel(state), null);
+});
+
+test("live talk: a talk with no updates goes stale instead of sticking", async () => {
+  const { applyWatcherTalkLive, watcherTalkLevel, WATCHER_LIVE_STALE_MS } = await load();
+  const state = { session: null, level: null, timer: null };
+  const talking = [];
+  let pending = null;
+  applyWatcherTalkLive(state, { session: 9, active: true }, (v) => talking.push(v), {
+    setTimer: (fn, ms) => {
+      pending = { fn, ms };
+      return pending;
+    },
+    clearTimer: () => {},
+  });
+  assert.equal(pending.ms, WATCHER_LIVE_STALE_MS);
+  pending.fn();
+  assert.deepEqual(talking, [true, false]);
+  assert.equal(watcherTalkLevel(state), null);
+});

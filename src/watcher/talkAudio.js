@@ -21,6 +21,19 @@ function createOpusDecoder() {
   };
 }
 
+// RMS of 16-bit PCM, 0..1 (same scale as the renderer's mic level for the pill waveform).
+function rmsLevel(pcm) {
+  const n = Math.floor(pcm.length / 2);
+  if (!n) return 0;
+  const view = new DataView(pcm.buffer, pcm.byteOffset, n * 2);
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const v = view.getInt16(i * 2, true) / 32768;
+    sum += v * v;
+  }
+  return Math.sqrt(sum / n);
+}
+
 // Frames missing from a session are filled with 20 ms of silence each (libopus
 // PLC here always conceals 120+ ms, so it would stretch the audio). Late or
 // repeated frames are dropped; seq is u16 and wraps.
@@ -45,6 +58,11 @@ function createTalkAssembler({ createDecoder = createOpusDecoder, logger = null 
       return talk ? talk.session : null;
     },
 
+    // Level of the last decoded frame (0 for a bad or missing frame), for the live pill waveform.
+    get level() {
+      return talk ? talk.level : 0;
+    },
+
     start(session) {
       close();
       talk = {
@@ -57,6 +75,7 @@ function createTalkAssembler({ createDecoder = createOpusDecoder, logger = null 
         lost: 0,
         late: 0,
         badFrames: 0,
+        level: 0,
         decoderError: null, // createDecoder threw (first message)
         decodeError: null, // first per-frame decode exception
       };
@@ -110,9 +129,11 @@ function createTalkAssembler({ createDecoder = createOpusDecoder, logger = null 
       }
       if (!pcm || pcm.length === 0) {
         talk.badFrames++;
+        talk.level = 0;
         appendSilence(1);
         return true;
       }
+      talk.level = rmsLevel(pcm);
       talk.chunks.push(Buffer.from(pcm.buffer, pcm.byteOffset, pcm.length));
       talk.frames += Math.max(1, Math.round(pcm.length / FRAME_BYTES));
       return true;
@@ -170,6 +191,7 @@ function encodeWav(pcm, sampleRate = SAMPLE_RATE) {
 }
 
 module.exports = {
+  rmsLevel,
   createTalkAssembler,
   createOpusDecoder,
   encodeWav,

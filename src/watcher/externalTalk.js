@@ -5,6 +5,45 @@
 
 import logger from "../utils/logger";
 
+// A live talk with no update for this long is over (main lost the stop, e.g. a crash),
+// so the pill never stays stuck in listening.
+export const WATCHER_LIVE_STALE_MS = 3000;
+
+// Live talk state from main (talkSource.js): `state` is { session, level, timer },
+// owned by the caller; setTalking(bool) drives the pill's listening state.
+export function applyWatcherTalkLive(
+  state,
+  payload,
+  setTalking,
+  { setTimer = setTimeout, clearTimer = clearTimeout, staleMs = WATCHER_LIVE_STALE_MS } = {}
+) {
+  if (!state || !payload) return;
+  const stop = () => {
+    clearTimer(state.timer);
+    state.timer = null;
+    state.session = null;
+    state.level = null;
+    setTalking(false);
+  };
+  if (!payload.active) {
+    if (state.session === payload.session) stop();
+    return;
+  }
+  if (state.session !== payload.session) {
+    state.session = payload.session;
+    state.level = 0;
+    setTalking(true);
+  }
+  if (typeof payload.level === "number") state.level = payload.level;
+  clearTimer(state.timer);
+  state.timer = setTimer(stop, staleMs);
+}
+
+// Waveform level while a Watcher talk is live, else null (waveform rests).
+export function watcherTalkLevel(state) {
+  return state?.session != null ? (state.level ?? 0) : null;
+}
+
 // Returns "ok" | "busy" | "empty". Never throws: processAudio reports its own
 // failures through onError, and the Watcher's state follows the lifecycle.
 export async function transcribeWatcherAudio(audioManager, payload) {

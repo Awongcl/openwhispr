@@ -8,6 +8,7 @@ const {
   sendToDictationWindow,
   TALK_AUDIO_CHANNEL,
   TALK_IDLE_MS,
+  LEVEL_EVERY_FRAMES,
 } = require("../../src/watcher/talkSource");
 const { createTalkAssembler } = require("../../src/watcher/talkAudio");
 
@@ -211,4 +212,69 @@ test("pc-mic source drives OpenWhispr dictation and ignores frames", () => {
   talk.start({ session: 2 });
   talk.cancel({ session: 2 });
   assert.deepEqual(calls, ["start", "stop", "start", "cancel"]);
+});
+
+test("watcher source: live state brackets the talk, levels every LEVEL_EVERY_FRAMES frames", () => {
+  const live = [];
+  const order = [];
+  const source = createWatcherTalkSource({
+    assembler: fakeAssembler(),
+    deliver: () => {
+      order.push("deliver");
+      return true;
+    },
+    live: (p) => {
+      live.push(p);
+      if (!p.active) order.push("stop");
+    },
+    setTimer: () => ({}),
+    clearTimer: () => {},
+  });
+  source.start({ session: 7 });
+  for (let seq = 0; seq < 6; seq++) source.audio({ session: 7, seq, frame: Buffer.from([1]) });
+  source.end({ session: 7, frames: 6 });
+  assert.deepEqual(live[0], { session: 7, active: true });
+  const levels = live.filter((p) => p.level !== undefined);
+  assert.equal(levels.length, 6 / LEVEL_EVERY_FRAMES);
+  // fake decoder: every byte 1 -> int16 0x0101 = 257 -> RMS 257/32768
+  assert.ok(Math.abs(levels[0].level - 257 / 32768) < 1e-9);
+  assert.deepEqual(live.at(-1), { session: 7, active: false });
+  assert.deepEqual(order, ["stop", "deliver"]); // pill leaves listening before processing starts
+});
+
+test("watcher source: cancel and idle drop end the live state; a throwing live never breaks the talk", () => {
+  const live = [];
+  const timers = [];
+  const source = createWatcherTalkSource({
+    assembler: fakeAssembler(),
+    deliver: () => true,
+    live: (p) => live.push(p),
+    setTimer: (fn) => {
+      const t = { fn };
+      timers.push(t);
+      return t;
+    },
+    clearTimer: () => {},
+  });
+  source.start({ session: 1 });
+  source.cancel({ session: 1 });
+  assert.deepEqual(live.at(-1), { session: 1, active: false });
+  source.start({ session: 2 });
+  timers.at(-1).fn(); // no frames: idle drop
+  assert.deepEqual(live.at(-1), { session: 2, active: false });
+
+  const delivered = [];
+  const throwing = createWatcherTalkSource({
+    assembler: fakeAssembler(),
+    deliver: (p) => delivered.push(p),
+    live: () => {
+      throw new Error("window gone");
+    },
+    setTimer: () => ({}),
+    clearTimer: () => {},
+  });
+  throwing.start({ session: 3 });
+  for (let seq = 0; seq < 4; seq++) throwing.audio({ session: 3, seq, frame: Buffer.from([1]) });
+  throwing.end({ session: 3, frames: 4 });
+  assert.equal(delivered.length, 1);
 });

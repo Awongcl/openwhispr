@@ -25,7 +25,11 @@ import { waitForVisualFrames } from "../utils/visualFrame";
 import { resolveLifecycleInputKind } from "../helpers/dictationRouting";
 import { createAssistantResponseDelivery } from "../helpers/assistantResponseDelivery";
 import { recordCleanupFailure } from "../stores/cleanupFailureStore";
-import { transcribeWatcherAudio } from "../watcher/externalTalk";
+import {
+  applyWatcherTalkLive,
+  transcribeWatcherAudio,
+  watcherTalkLevel,
+} from "../watcher/externalTalk";
 
 // Maps a failed selection-replacement code to its `selectionEditing.*` toast
 // detail key; unlisted codes fall back to the generic "unavailable" message.
@@ -54,6 +58,10 @@ export const useAudioRecording = (toast, options = {}) => {
   const [micCaptureStatus, setMicCaptureStatus] = useState("inactive");
   const [transcript, setTranscript] = useState("");
   const [partialTranscript, setPartialTranscript] = useState("");
+  // Watcher fork (O13): a Watcher talk records on the Watcher, not here; this
+  // mirrors it so the pill shows listening + waveform while the user talks.
+  const [isWatcherTalking, setIsWatcherTalking] = useState(false);
+  const watcherTalkRef = useRef({ session: null, level: null, timer: null });
   const audioManagerRef = useRef(null);
   const startLockRef = useRef(false);
   const stopRequestedDuringStartRef = useRef(false);
@@ -1033,6 +1041,9 @@ export const useAudioRecording = (toast, options = {}) => {
     const disposeWatcherTalkAudio = window.electronAPI.onWatcherTalkAudio?.((payload) => {
       void transcribeWatcherAudio(audioManagerRef.current, payload);
     });
+    const disposeWatcherTalkLive = window.electronAPI.onWatcherTalkLive?.((payload) => {
+      applyWatcherTalkLive(watcherTalkRef.current, payload, setIsWatcherTalking);
+    });
 
     const disposeForceStopped = window.electronAPI.onDictationForceStopped?.((payload) => {
       // Listed rather than negated: a future renderer-initiated stop would not
@@ -1055,6 +1066,8 @@ export const useAudioRecording = (toast, options = {}) => {
       disposeStop?.();
       disposeForceStopped?.();
       disposeWatcherTalkAudio?.();
+      disposeWatcherTalkLive?.();
+      clearTimeout(watcherTalkRef.current.timer);
       if (audioManagerRef.current) {
         audioManagerRef.current.cleanup();
       }
@@ -1099,12 +1112,15 @@ export const useAudioRecording = (toast, options = {}) => {
   }, []);
 
   const getAudioLevel = useCallback(
-    () => audioManagerRef.current?.getRecordingAudioLevel() ?? null,
+    () =>
+      audioManagerRef.current?.getRecordingAudioLevel() ?? watcherTalkLevel(watcherTalkRef.current),
     []
   );
 
+  const showsRecording = isRecording || isWatcherTalking;
+
   useEffect(() => {
-    if (!isRecording) return undefined;
+    if (!showsRecording) return undefined;
 
     const reportAudioLevel = () => {
       const level = getAudioLevel();
@@ -1122,7 +1138,7 @@ export const useAudioRecording = (toast, options = {}) => {
     reportAudioLevel();
     const interval = setInterval(reportAudioLevel, COMPANION_AUDIO_LEVEL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [assistantOpenRef, getAudioLevel, isAssistantVoice, isRecording]);
+  }, [assistantOpenRef, getAudioLevel, isAssistantVoice, showsRecording]);
 
   const toggleListening = async ({
     voiceAgentRequested = false,
@@ -1136,7 +1152,8 @@ export const useAudioRecording = (toast, options = {}) => {
   };
 
   return {
-    isRecording,
+    // Display state: includes a live Watcher talk (toggle/stop logic above uses the real one).
+    isRecording: showsRecording,
     // A paste still waiting when the next recording starts must not paint that
     // recording's pill as processing.
     isProcessing: isProcessing || (isPasting && !isRecording),
