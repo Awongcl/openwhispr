@@ -128,6 +128,11 @@ import { normalizeAgentSelectionContext } from "../utils/agentSelectionContext";
 import { getAgentName } from "../utils/agentName";
 import { shouldDisplayDictationPreview } from "../utils/transcriptionPreview";
 import {
+  applyLanguageGuard,
+  languageGuardActive,
+  withForcedLanguage,
+} from "../watcher/languageGuard.js";
+import {
   buildSelectionEditSystemPrompt,
   buildSelectionEditUserPrompt,
   extractSelectionEditReplacement,
@@ -3768,6 +3773,11 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
       if (shouldStream) {
         formData.append("stream", "true");
       }
+      // Watcher fork: verbose_json names the detected language for the guard below.
+      const guardLanguage = !shouldStream && languageGuardActive({ provider, language, model });
+      if (guardLanguage) {
+        formData.append("response_format", "verbose_json");
+      }
 
       const apiCallStart = performance.now();
 
@@ -3885,6 +3895,22 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
             "transcription"
           );
           throw new Error(`Failed to parse API response: ${parseError.message}`);
+        }
+
+        if (guardLanguage) {
+          result = await applyLanguageGuard(result, {
+            logger,
+            retry: async (forced) => {
+              const retryResponse = await fetch(endpoint, {
+                method: "POST",
+                headers,
+                body: withForcedLanguage(formData, forced),
+                signal: requestController.signal,
+              });
+              if (!retryResponse.ok) throw new Error(`API Error: ${retryResponse.status}`);
+              return retryResponse.json();
+            },
+          });
         }
 
         logger.debug(
