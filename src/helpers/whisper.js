@@ -399,6 +399,7 @@ class WhisperManager {
       vadConfig,
       signal: options.signal,
       skipDecoderThresholds: options.skipDecoderThresholds === true,
+      responseFormat: options.responseFormat,
     });
   }
 
@@ -468,6 +469,7 @@ class WhisperManager {
       initialPrompt,
       signal: options.signal,
       skipDecoderThresholds: options.skipDecoderThresholds,
+      responseFormat: options.responseFormat,
     });
     const elapsed = Date.now() - startTime;
 
@@ -566,6 +568,10 @@ class WhisperManager {
       const text = typeof result.text === "string" ? this.normalizeWhitespace(result.text) : "";
       if (!text || this.isBlankAudioMarker(text)) {
         return { success: false, message: "No audio detected" };
+      }
+      // Watcher fork: verbose_json carries the detected language (languageGuard.js).
+      if (typeof result.language === "string" && result.language) {
+        return { success: true, text, language: result.language };
       }
       return { success: true, text };
     }

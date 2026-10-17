@@ -1,4 +1,4 @@
-// Watcher fork: allowed-languages guard for cloud Whisper (Groq).
+// Watcher fork: allowed-languages guard for Whisper (Groq and local whisper.cpp).
 //
 // Whisper's auto language detection keeps labelling Singapore-accented English
 // as Malay/Indonesian, and then "transcribes" it as a Malay translation (seen
@@ -6,6 +6,8 @@
 // detection, asks for verbose_json so the response names the detected language,
 // and when that language is not allowed transcribes the same audio again with
 // English forced. Chinese stays on auto, so mixed EN/ZH dictation keeps working.
+// Local whisper.cpp (the Watcher-mic O13 path) mislabels the same way, so its
+// dictation uses the guard too (whisper-server verbose_json, e.g. "malay").
 
 export const ALLOWED_LANGUAGES = ["en", "zh"];
 export const FALLBACK_LANGUAGE = "en";
@@ -16,6 +18,8 @@ const NAME_TO_CODE = {
   english: "en",
   chinese: "zh",
   mandarin: "zh",
+  cantonese: "zh",
+  yue: "zh",
   malay: "ms",
   indonesian: "id",
 };
@@ -33,6 +37,11 @@ export function normalizeLanguage(value) {
 // Only Groq's Whisper models, and only while the user leaves the language on auto.
 export function languageGuardActive({ provider, language, model }) {
   return provider === "groq" && !language && typeof model === "string" && /^whisper/i.test(model);
+}
+
+// Local whisper.cpp dictation, only while the language is on auto.
+export function localLanguageGuardActive({ language } = {}) {
+  return !language;
 }
 
 // Same request with the language forced and the plain json response.

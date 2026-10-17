@@ -130,6 +130,7 @@ import { shouldDisplayDictationPreview } from "../utils/transcriptionPreview";
 import {
   applyLanguageGuard,
   languageGuardActive,
+  localLanguageGuardActive,
   withForcedLanguage,
 } from "../watcher/languageGuard.js";
 import {
@@ -2208,8 +2209,25 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
         "performance"
       );
 
+      // Watcher fork: with the language on auto, verbose_json names the detected
+      // language so the guard below can redo a non-EN/ZH transcript in English.
+      const guardLanguage = localLanguageGuardActive(options);
       const transcriptionStart = performance.now();
-      let result = await window.electronAPI.transcribeLocalWhisper(arrayBuffer, options);
+      let result = await window.electronAPI.transcribeLocalWhisper(
+        arrayBuffer,
+        guardLanguage ? { ...options, responseFormat: "verbose_json" } : options
+      );
+      if (guardLanguage && result?.success) {
+        result = await applyLanguageGuard(result, {
+          logger,
+          retry: (forced) =>
+            window.electronAPI.transcribeLocalWhisper(arrayBuffer, {
+              ...options,
+              language: forced,
+            }),
+        });
+        if (result.guardedFrom) options.language = result.language;
+      }
       timings.transcriptionProcessingDurationMs = Math.round(
         performance.now() - transcriptionStart
       );
