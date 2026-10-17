@@ -4,10 +4,11 @@
 //   ipcHandlers   paste-text calls onTextInserted({ pasted, target })
 //   preload.js    watcherGetConfig / watcherSetConfig, onWatcherTalkAudio
 //   useAudioRecording  onWatcherTalkAudio -> transcribeWatcherAudio (externalTalk.js)
+// No upstream hook for the Groq meter: usageMeters.js reads response headers via session.webRequest.
 // Windows only for now; other platforms get a no-op.
 
 const path = require("path");
-const { app, globalShortcut, ipcMain, powerMonitor } = require("electron");
+const { app, globalShortcut, ipcMain, powerMonitor, session } = require("electron");
 
 const { createConfigStore, findDictationConflicts, HOTKEY_FIELDS } = require("./config");
 const { createInsertionTracker } = require("./insertionTracker");
@@ -21,6 +22,7 @@ const {
   createWatcherTalkSource,
 } = require("./talkSource");
 const { createToast } = require("./toast");
+const { createUsageMeters } = require("./usageMeters");
 const { WatcherInput } = require("./watcherInput");
 const { WatcherLink } = require("./watcherLink");
 
@@ -40,6 +42,8 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, windowMan
   const tracker = createInsertionTracker();
   const input = new WatcherInput({ logger });
   const toast = createToast();
+  const usageMeters = createUsageMeters({ logger });
+  usageMeters.attach(session.defaultSession); // Groq rate-limit headers -> usage service (O11)
   let registered = {}; // field -> accelerator actually registered
   let hotkeyStatus = {};
 
@@ -210,6 +214,7 @@ function initWatcher({ ipcHandlers, clipboardManager, sidecarRegistry, windowMan
     link.stop();
     clearTimeout(resumeTimer);
     toast.destroy();
+    usageMeters.stop();
   });
 
   registerHotkeys();
